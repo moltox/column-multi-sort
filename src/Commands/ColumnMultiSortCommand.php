@@ -1,12 +1,12 @@
 <?php
 
-namespace Spatie\Skeleton\Commands;
+namespace Moltox\ColumnMultiSort\Commands;
 
 use Illuminate\Console\Command;
 
-class SkeletonCommand extends Command
+class ColumnMultiSortCommand extends Command
 {
-    public $signature = 'skeleton';
+    public $signature = 'column-multi-sort';
 
     public $description = 'My command';
 
