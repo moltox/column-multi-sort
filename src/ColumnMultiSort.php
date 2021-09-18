@@ -5,6 +5,7 @@ namespace Moltox\ColumnMultiSort;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Moltox\ColumnMultiSort\Exceptions\ColumnMultiSortException;
@@ -87,29 +88,63 @@ trait ColumnMultiSort
 
             $orderBy = $column;
 
-            if ($this->isRelational($column)) {
+            if ($this->isColumnSortable($column)) {
 
-                $splitted = $this->splitRelated($column);
+                if ($this->isRelational($column)) {
 
-                $relationName = $splitted[0];
+                    $splitted = $this->splitRelated($column);
 
-                $relationName = $this->handleRelation($query, $relationName);
+                    $relationName = $splitted[0];
 
-                $orderBy = $relationName.'.'.$splitted[count($splitted) - 1];
+                    $relationName = $this->handleRelation($query, $relationName);
+
+                    $orderBy = $relationName.'.'.$splitted[count($splitted) - 1];
+
+                }
+
+                $query->orderBy($orderBy, $direction);
+
+                if (config('column-multi-sort.log_enabled', false)) {
+
+                    Log::channel(env('LOG_CHANNEL', 'stack'))->info('[MultiSort] SQL '.$query->toSql());
+
+                }
+
+            } else {
+
+                if (config('column-multi-sort.log_enabled', false)) {
+
+                    Log::channel(env('LOG_CHANNEL', 'stack'))
+                        ->warning('[MultiSort] unsortable column permitted: '.$column);
+
+                }
 
             }
 
-            $query->orderBy($orderBy, $direction);
-
         }
 
-        if (config('column-multi-sort.log_enabled', false)) {
-
-          Log::channel(env('LOG_CHANNEL', 'stack'))->info('[MultiSort] SQL '.$query->toSql());
-
-        }
 
         return $query;
+
+    }
+
+    /**
+     * @param  string  $column
+     *
+     * @return bool
+     */
+    private function isColumnSortable(string $column): bool
+    {
+
+        if (config('column-multi-sort.default.enabled', false)) {
+            return true;
+        }
+
+        if (isset($this->multiSort) && in_array($column, $this->multiSort)) {
+            return true;
+        }
+
+        return false;
 
     }
 
@@ -192,7 +227,7 @@ trait ColumnMultiSort
         $joinType = config('column-multi-sort.join_type', 'leftJoin');
 
         return $query
-            ->select($parentTable.'.*')
+            ->addSelect($parentTable.'.*')
             ->{$joinType}($relatedTable, $parentPrimaryKey, '=', $relatedPrimaryKey);
     }
 
