@@ -17,9 +17,6 @@ class ColumnMultiSortServiceProvider extends PackageServiceProvider
          */
         $package
             ->name('column-multi-sort')
-            ->hasConfigFile()
-            ->hasViews()
-            ->hasMigration('create_column_multi_sort_table')
-            ->hasCommand(ColumnMultiSortCommand::class);
+            ->hasConfigFile();
     }
 }
