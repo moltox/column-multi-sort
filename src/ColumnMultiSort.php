@@ -2,17 +2,12 @@
 
 namespace Moltox\ColumnMultiSort;
 
-use BadMethodCallException;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Moltox\ColumnMultiSort\Exceptions\ColumnMultiSortException;
-use Moltox\ColumnMultiSort\Classes\SortQueries;
 
 trait ColumnMultiSort
 {
@@ -31,7 +26,12 @@ trait ColumnMultiSort
 
         $sorts = $this->findParams($params);
 
-        Log::debug('ColumnMultiSort'.print_r($sorts, true));
+        if (config('column-multi-sort.log_enabled', false)) {
+
+            Log::channel(env('LOG_CHANNEL', 'stack'))
+                ->info('[MultiSort] using sorts: '.print_r($sorts, true));
+
+        }
 
         if (!empty($sorts)) {
 
@@ -60,7 +60,7 @@ trait ColumnMultiSort
 
         }
 
-        if (!empty($params) ) {
+        if (!empty($params)) {
 
             return $params;
 
@@ -83,31 +83,31 @@ trait ColumnMultiSort
     private function buildQueries(Builder $query, array $sorts)
     {
 
-        Log::debug('buildQueries: '.print_r([$query::class, $sorts], true));
-
         foreach ($sorts as $column => $direction) {
-            Log::debug('buildQueries 1: '.print_r([$sorts, $column, $direction], true));
+
+            $orderBy = $column;
+
             if ($this->isRelational($column)) {
 
                 $splitted = $this->splitRelated($column);
 
-                $relation = $splitted[0];
-                // TODO add handle for multi relation
-                $column = $splitted[count($splitted) - 1];
+                $relationName = $splitted[0];
 
-              //  $query = SortQueries::addJoin($query, $relation, $column);
+                $relationName = $this->handleRelation($query, $relationName);
 
-            } else {
-
-                $query->orderBy($column, $direction);
+                $orderBy = $relationName.'.'.$splitted[count($splitted) - 1];
 
             }
 
-
+            $query->orderBy($orderBy, $direction);
 
         }
 
-        Log::debug('Query ' . $query->toSql());
+        if (config('column-multi-sort.log_enabled', false)) {
+
+          Log::channel(env('LOG_CHANNEL', 'stack'))->info('[MultiSort] SQL '.$query->toSql());
+
+        }
 
         return $query;
 
@@ -130,6 +130,70 @@ trait ColumnMultiSort
 
         return explode(config('column-multi-sort.uri_relation_column_separator', '.'), $relationColumn);
 
+    }
+
+    /**
+     * @param  Builder  $query
+     * @param  string  $relationName
+     *
+     * @return string
+     * @throws ColumnMultiSortException
+     */
+    private function handleRelation(Builder $query, string $relationName): string
+    {
+
+        try {
+
+            $relation = $query->getRelation(Str::camel($relationName));
+            $parentTable = $relation->getParent()->getTable();
+            $relatedTable = $relation->getRelated()->getTable();
+
+            if ($relation instanceof HasOne) {
+
+                $relatedPrimaryKey = $relation->getQualifiedForeignKeyName();
+                $parentPrimaryKey = $relation->getQualifiedParentKeyName();
+
+            } elseif ($relation instanceof BelongsTo) {
+
+                $relatedPrimaryKey = $relation->getQualifiedOwnerKeyName();
+                $parentPrimaryKey = $relation->getQualifiedForeignKeyName();
+
+            } else {
+
+                throw new ColumnMultiSortException('Relation not found or unsupported type');
+
+            }
+
+            $query = $this->addJoin($query, $parentTable, $relatedTable, $parentPrimaryKey, $relatedPrimaryKey);
+
+
+        } catch (\Exception $e) {
+
+            throw new ColumnMultiSortException($e->getMessage());
+
+        }
+
+        return $relatedTable;
+
+    }
+
+    /**
+     * @param  Builder  $query
+     * @param $parentTable
+     * @param $relatedTable
+     * @param $parentPrimaryKey
+     * @param $relatedPrimaryKey
+     *
+     * @return mixed
+     */
+    public static function addJoin(Builder $query, $parentTable, $relatedTable, $parentPrimaryKey, $relatedPrimaryKey)
+    {
+
+        $joinType = config('column-multi-sort.join_type', 'leftJoin');
+
+        return $query
+            ->select($parentTable.'.*')
+            ->{$joinType}($relatedTable, $parentPrimaryKey, '=', $relatedPrimaryKey);
     }
 
 }

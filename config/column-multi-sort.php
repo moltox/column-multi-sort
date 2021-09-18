@@ -5,6 +5,8 @@ return [
     'default' => [
         'direction' => 'asc'
     ],
-    'uri_relation_column_separator' => '.'
+    'uri_relation_column_separator' => '.',
+    'log_enabled' => true,
+    'log_channel' => 'default'
 
 ];
