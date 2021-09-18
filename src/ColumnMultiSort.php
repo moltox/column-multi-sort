@@ -18,27 +18,54 @@ trait ColumnMultiSort
     public function scopeMultiSort($query)
     {
 
-        $this->readParamsFromRequest();
+        $sorts = $this->findParams();
+
+        Log::debug('ColumnMultiSort'.print_r($sorts, true));
+
+        if (!empty($sorts)) {
+
+            return $this->queryOrderBuilder($query, $sorts);
+
+        }
+
+        return $query;
+
+    }
+
+    private function findParams()
+    {
+
+        $sorts = [];
+
+        return $this->readParamsFromRequest();
+
 
     }
 
     private function readParamsFromRequest()
     {
 
-        $params = request()->all();
+        $sorts = [];
 
+        if (request()->has('order')) {
+
+            return request()->get('order');
+
+        }
+
+        return $sorts;
 
     }
 
     /**
      * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  array  $sortParameters
+     * @param  array  $sortColumnParams
      *
      * @return \Illuminate\Database\Query\Builder
      *
      * @throws ColumnMultiSortException
      */
-    private function queryOrderBuilder($query, array $sortParameters)
+    private function queryOrderBuilder($query, array $sortColumnParams)
     {
 
         /**
@@ -46,13 +73,39 @@ trait ColumnMultiSort
          */
         $model = $this;
 
-        list($column, $direction) = $this->parseParameters($sortParameters);
+        foreach ($sortColumnParams as $column => $direction) {
+
+            if ($this->isRelational($column)) {
+                // TODO add relational
+                Log::debug('is relational: '.$column);
+                unset($sortColumnParams[$column]);
+            }
+
+         //   Log::debug("One col:".print_r(['arr' => $sortColumnParams, 'foo' => ['col' => $column, 'dir' => $direction]], true));
+
+            if (isset($model->sortableAs) && in_array($column, $model->sortableAs)) {
+
+                Log::debug('Sortable as col: ' . $column);
+                $query = $query->orderBy($column, $direction);
+
+            } elseif ($this->isSortableColumn($model, $column)) {
+
+                $column = $model->getTable().'.'.$column;
+                Log::debug('Add query for (table.col): ' . $column);
+                $query = $query->orderBy($column, $direction);
+
+            }
+        }
+
+
+
+        return $query;
 
         if (is_null($column)) {
             return $query;
         }
 
-        $relationColumnArray = $this->explodeSortParameter($column);
+
 
         if (!empty($relationColumnArray)) {
             $relationName = $relationColumnArray[0];
@@ -73,32 +126,8 @@ trait ColumnMultiSort
             $model = $relation->getRelated();
         }
 
-        if (isset($model->sortableAs) && in_array($column, $model->sortableAs)) {
-
-            $query = $query->orderBy($column, $direction);
-
-        } elseif ($this->columnExists($model, $column)) {
-
-            $column = $model->getTable().'.'.$column;
-            $query = $query->orderBy($column, $direction);
-
-        }
-
-        return $query;
-    }
 
 
-    /**
-     * @param  array  $parameters
-     *
-     * @return array
-     */
-    private function parseParameters(array $parameters)
-    {
-
-        Log::debug('parseParameters'.print_r($parameters, true));
-
-        return [];
     }
 
 
@@ -142,11 +171,23 @@ trait ColumnMultiSort
      *
      * @return bool
      */
-    private function columnExists($model, $column)
+    private function isSortableColumn($model, $column)
     {
 
         return (isset($model->sortable)) ? in_array($column, $model->sortable) :
             Schema::connection($model->getConnectionName())->hasColumn($model->getTable(), $column);
+    }
+
+    /**
+     * @param  string  $column
+     *
+     * @return bool
+     */
+    private function isRelational(string $column)
+    {
+
+        return count(explode(config('column-multi-sort.uri_relation_column_separator', '.'), $column)) > 1;
+
     }
 
 
