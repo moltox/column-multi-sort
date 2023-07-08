@@ -14,15 +14,14 @@ trait ColumnMultiSort
 {
 
     /**
-     * @param $query
-     * @param  array  $params
+     * @param Builder $query
+     * @param array $params
      *
      * Params: array(["column" => "direction", "column" => "direction"] )
      *
-     * @return \Illuminate\Database\Query\Builder|mixed
-     * @throws ColumnMultiSortException
+     * @return Builder
      */
-    public function scopeMultiSort($query, array $params = [])
+    public function scopeMultiSort(Builder $query, array $params = []): Builder
     {
 
         $sorts = $this->findParams($params);
